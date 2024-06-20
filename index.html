@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新能源汽车数据可视化</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap');
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            background-image: url('https://www.transparenttextures.com/patterns/white-diamond.png');
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            margin-top: 100px; /* To create more distance from the top */
+        }
+        .banner {
+            width: 50%; /* Adjust the width of the banner */
+            background-color: white;
+            padding: 20px 0;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 40px;
+            border-top-right-radius: 20px;
+            border-bottom-right-radius: 20px;
+            position: absolute; /* Ensure the banner is on the left side */
+            top: 50px; /* Adjust the top position */
+            left: 0;
+        }
+        .banner .title {
+            font-size: 28px;
+            color: #005f7f;
+            font-family: 'Roboto', sans-serif;
+            font-weight: bold;
+            text-align: center;
+        }
+        .card {
+            background-color: #f8f9fa;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            width: 800px;
+            display: flex;
+            justify-content: space-between;
+            flex-direction: column;
+            align-items: center;
+            transition: box-shadow 0.3s ease;
+            margin-top: 100px; /* Move the card down further */
+        }
+        .sections {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .section {
+            width: 45%;
+        }
+        .section h3 {
+            font-size: 28px;
+            font-family: 'Great Vibes', cursive;
+            color: #005f7f;
+            margin-bottom: 10px;
+        }
+        .section a {
+            display: block;
+            color: #005f7f;
+            text-decoration: none;
+            margin-bottom: 10px;
+            font-size: 18px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            transition: background-color 0.3s ease;
+            border: 2px solid #005f7f;
+        }
+        .section a:hover {
+            background-color: #005f7f;
+            color: white;
+        }
+        .source {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #005f7f;
+            align-self: flex-end;
+        }
+        .source a {
+            color: #005f7f;
+            text-decoration: none;
+        }
+        .source a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="banner">
+            <div class="title">新能源汽车数据可视化</div>
+        </div>
+        <div class="card">
+            <div class="sections">
+                <div class="section">
+                    <h3>中国</h3>
+                    <a href="energy_classification.html">能源分类</a>
+                    <a href="comparison_analysis.html">不同能源参数对比分析</a>
+                    <a href="car_analysis.html">汽车参数分析</a>
+                    <a href="china_policy_wordcloud.html">政策文本挖掘</a>
+                </div>
+                <div class="section">
+                    <h3>世界</h3>
+                    <a href="global_policy_overview.html">全球政策一览</a>
+                    <a href="global_policy_text_analysis.html">全球政策文本挖掘</a>
+                    <a href="global_ev_stock_sales.html">全球电动汽车库存与销量</a>
+                </div>
+            </div>
+            <div class="source">
+                数据来源：
+                <a href="https://www.dongchedi.com/auto/library/x-x-x-x-x-x-4-x-x-x-x-x-x-x-x-x-x-x" target="_blank">懂车帝</a>、
+                <a href="https://www.iea.org/data-and-statistics/data-product/global-ev-outlook-2024" target="_blank">国际能源署</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

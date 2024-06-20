@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>汽车参数分析</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.0.2/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body { padding: 20px; }
+        .nav-buttons { margin-bottom: 20px; display: flex; gap: 10px; position: relative; }
+        .nav-buttons .category-selector { display: flex; flex-direction: column; }
+        .nav-buttons .category-selector button { display: block; width: 200px; padding: 10px; background: none; border: 1px solid #ccc; text-align: left; cursor: pointer; font-size: 16px; }
+        .nav-buttons .category-selector button:hover { background-color: #e9ecef; }
+        .nav-buttons .category-selector .slider { overflow-y: scroll; max-height: 200px; background: #f1f1f1; border: 1px solid #ccc; position: absolute; z-index: 10; display: none; }
+        .nav-buttons .category-selector .slider.open { display: block; }
+        #chartContainer { display: flex; flex-wrap: wrap; gap: 20px; }
+        .chart { width: 45%; height: 600px; min-width: 300px; }
+        .selected-category { display: flex; gap: 10px; margin-bottom: 20px; }
+        .selected-category span { background-color: #008CBA; color: white; padding: 5px 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h2>汽车参数分析</h2>
+    <div id="categoryButtons" class="nav-buttons">
+        <div class="category-selector">
+            <button onclick="toggleSlider('primary')">选择能源分类</button>
+            <div id="primaryCategoryButtons" class="slider"></div>
+        </div>
+        <div class="category-selector">
+            <button onclick="toggleSlider('secondary')">选择参数</button>
+            <div id="secondaryCategoryButtons" class="slider"></div>
+        </div>
+    </div>
+    <div class="selected-category">
+        <span id="selectedPrimaryCategory"></span>
+        <span id="selectedSecondaryCategory"></span>
+    </div>
+    <div id="chartContainer">
+        <div class="chart" id="histogramChart"></div>
+        <div class="chart" id="boxplotChart"></div>
+        <div class="chart" id="pieChart"></div>
+    </div>
+
+    <script>
+        const categories = ['插电式混合动力', '纯电动', '增程式'];
+        const excludedParameters = [
+            '扭矩 (N·m)', '百公里加速 (s)', '变速箱', '驱动方式', '四驱类型',
+            '前悬架形式', '后悬架形式', '整备质量 (Kg)', '最高时速 (Km/h)', '电动机',
+            '合并价格 (万)', '最高降幅 (万)'
+        ];
+        let currentCategory = null;
+        let currentData = null;
+
+        function loadCategoryData(category) {
+            currentCategory = category;
+            axios.get('sheets_processed.json')
+                .then(response => {
+                    currentData = response.data[category];
+                    createParameterButtons(currentData);
+                })
+                .catch(error => {
+                    console.error(`Error loading data for category ${category}: `, error);
+                });
+        }
+
+        function createPrimaryCategoryButtons() {
+            const container = document.getElementById('primaryCategoryButtons');
+            categories.forEach(category => {
+                const button = document.createElement('button');
+                button.innerText = category;
+                button.onclick = () => {
+                    document.getElementById('selectedPrimaryCategory').innerText = category;
+                    loadCategoryData(category);
+                    document.getElementById('primaryCategoryButtons').classList.remove('open');
+                    document.getElementById('secondaryCategoryButtons').classList.add('open');
+                };
+                container.appendChild(button);
+            });
+        }
+
+        function createParameterButtons(data) {
+            const container = document.getElementById('secondaryCategoryButtons');
+            container.innerHTML = ''; // 清空现有按钮
+
+            data.parameters
+                .filter(param => !excludedParameters.includes(param))
+                .forEach(param => {
+                    const button = document.createElement('button');
+                    button.innerText = param;
+                    button.onclick = () => {
+                        document.getElementById('selectedSecondaryCategory').innerText = param;
+                        container.classList.remove('open'); // 选择完成后隐藏选择框
+
+                        const histogram = echarts.init(document.getElementById('histogramChart'));
+                        const boxplot = echarts.init(document.getElementById('boxplotChart'));
+                        const pieChart = echarts.init(document.getElementById('pieChart'));
+
+                        histogram.clear();
+                        boxplot.clear();
+                        pieChart.clear();
+
+                        const histogramData = data.frequencyDistribution[param].histogramValues;
+                        const boxplotData = data.frequencyDistribution[param].boxplotValues;
+                        const valueCounts = data.frequencyDistribution[param].valueCounts;
+
+                        document.getElementById('boxplotChart').style.display = 'none';
+                        document.getElementById('pieChart').style.display = 'none';
+
+                        if (histogramData && histogramData.categories && histogramData.counts) {
+                            histogram.setOption({
+                                title: { text: `${param} 直方图`, left: 'center' },
+                                tooltip: { trigger: 'axis' },
+                                xAxis: { type: 'category', data: histogramData.categories },
+                                yAxis: { type: 'value' },
+                                series: [{ type: 'bar', data: histogramData.counts }]
+                            });
+                        } else {
+                            console.error(`Missing histogram data for parameter: ${param}`);
+                        }
+
+                        if (boxplotData) {
+                            document.getElementById('boxplotChart').style.display = 'block';
+                            boxplot.setOption({
+                                title: { text: `${param} 箱线图`, left: 'center' },
+                                tooltip: { trigger: 'item' },
+                                xAxis: { type: 'category', data: [param] },
+                                yAxis: { type: 'value' },
+                                series: [{
+                                    type: 'boxplot',
+                                    data: [
+                                        [
+                                            boxplotData.min,
+                                            boxplotData['25%'],
+                                            boxplotData['50%'],
+                                            boxplotData['75%'],
+                                            boxplotData.max
+                                        ]
+                                    ]
+                                }]
+                            });
+                        } else if (valueCounts) {
+                            document.getElementById('pieChart').style.display = 'block';
+                            pieChart.setOption({
+                                title: { text: `${param} 扇形图`, left: 'center' },
+                                tooltip: { trigger: 'item' },
+                                legend: {
+                                    orient: 'vertical',
+                                    right: 20,
+                                    top: 20,
+                                    bottom: 20,
+                                    itemGap: 10,
+                                    type: 'scroll'
+                                },
+                                series: [{
+                                    name: param,
+                                    type: 'pie',
+                                    radius: '50%',
+                                    data: Object.keys(valueCounts).map(key => ({ value: valueCounts[key], name: key })),
+                                    emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
+                                }]
+                            });
+                        } else {
+                            console.error(`Missing pie chart data for parameter: ${param}`);
+                        }
+                    };
+                    container.appendChild(button);
+                });
+        }
+
+        function toggleSlider(type) {
+            const slider = type === 'primary' ? document.getElementById('primaryCategoryButtons') : document.getElementById('secondaryCategoryButtons');
+            slider.classList.toggle('open');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            createPrimaryCategoryButtons();
+        });
+    </script>
+</body>
+</html>

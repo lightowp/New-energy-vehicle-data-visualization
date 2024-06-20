@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>参数对比分析</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.0.2/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body { padding: 20px; }
+        .nav-buttons { margin-bottom: 20px; display: flex; gap: 10px; position: relative; }
+        .nav-buttons .category-selector { display: flex; flex-direction: column; }
+        .nav-buttons .category-selector button { display: block; width: 200px; padding: 10px; background: none; border: 1px solid #ccc; text-align: left; cursor: pointer; font-size: 16px; }
+        .nav-buttons .category-selector button:hover { background-color: #e9ecef; }
+        .nav-buttons .category-selector .slider { overflow-y: scroll; max-height: 200px; background: #f1f1f1; border: 1px solid #ccc; position: absolute; z-index: 10; display: none; }
+        .nav-buttons .category-selector .slider.open { display: block; }
+        #chartContainer { display: flex; flex-wrap: wrap; gap: 20px; }
+        .chart { width: 45%; height: 400px; }
+        .selected-category { display: flex; gap: 10px; }
+        .selected-category span { background-color: #008CBA; color: white; padding: 5px 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h2>参数对比分析</h2>
+    <div id="categoryButtons" class="nav-buttons">
+        <div class="category-selector">
+            <button onclick="toggleSlider()">选择参数</button>
+            <div id="primaryCategoryButtons" class="slider"></div>
+        </div>
+    </div>
+    <div class="selected-category">
+        <span id="selectedPrimaryCategory"></span>
+    </div>
+    <div id="chartContainer"></div>
+
+    <script>
+        const parameters = [
+            '扭矩 (N·m)', '百公里加速 (s)', '变速箱', '驱动方式', '四驱类型',
+            '前悬架形式', '后悬架形式', '整备质量 (Kg)', '油箱容积 (L)', '最高时速 (Km/h)', '电动机',
+            '合并价格', '最高降幅'
+        ];
+        const numericalParameters = [
+            '扭矩 (N·m)', '百公里加速 (s)', '整备质量 (Kg)', '油箱容积 (L)', '最高时速 (Km/h)',
+            '合并价格', '最高降幅'
+        ];
+        const categories = ['插电式混合动力', '纯电动', '增程式'];
+        let currentData = {};
+
+        function loadComparisonData() {
+            axios.get('sheets_processed.json')
+                .then(response => {
+                    categories.forEach(category => {
+                        currentData[category] = response.data[category];
+                    });
+                    createParameterButtons();
+                })
+                .catch(error => {
+                    console.error('Error loading comparison data: ', error);
+                });
+        }
+
+        function createParameterButtons() {
+            const container = document.getElementById('primaryCategoryButtons');
+            parameters.forEach(param => {
+                const button = document.createElement('button');
+                button.innerText = param;
+                button.onclick = () => {
+                    const selectedPrimaryCategory = document.getElementById('selectedPrimaryCategory');
+                    if (selectedPrimaryCategory) {
+                        selectedPrimaryCategory.innerText = param;
+                    }
+                    clearPreviousCharts();
+                    loadComparisonCharts(param);
+                    toggleSlider(); // 收起参数选择面板
+                };
+                container.appendChild(button);
+            });
+        }
+
+        function toggleSlider() {
+            const slider = document.getElementById('primaryCategoryButtons');
+            slider.classList.toggle('open');
+        }
+
+        function clearPreviousCharts() {
+            const chartContainer = document.getElementById('chartContainer');
+            while (chartContainer.firstChild) {
+                chartContainer.removeChild(chartContainer.firstChild);
+            }
+        }
+
+        function loadComparisonCharts(param) {
+            const isNumerical = numericalParameters.includes(param);
+            const chartContainer = document.getElementById('chartContainer');
+
+            if (isNumerical) {
+                const histogramDiv = document.createElement('div');
+                histogramDiv.className = 'chart';
+                histogramDiv.id = 'histogramChart';
+                chartContainer.appendChild(histogramDiv);
+
+                const boxplotDiv = document.createElement('div');
+                boxplotDiv.className = 'chart';
+                boxplotDiv.id = 'boxplotChart';
+                chartContainer.appendChild(boxplotDiv);
+
+                const histogram = echarts.init(histogramDiv);
+                const boxplot = echarts.init(boxplotDiv);
+
+                let histogramData = { categories: [], counts: [] };
+                let boxplotData = [];
+                let totalCounts = {};
+
+                categories.forEach(category => {
+                    const data = currentData[category].frequencyDistribution[param];
+
+                    // 计算总数据量
+                    totalCounts[category] = data.histogramValues.counts.reduce((a, b) => a + b, 0);
+                    
+                    // 直方图数据
+                    if (data.histogramValues) {
+                        histogramData.categories = data.histogramValues.categories;
+                        histogramData.counts.push({
+                            name: `${category} (总数: ${totalCounts[category]})`,
+                            type: 'bar',
+                            data: data.histogramValues.counts
+                        });
+                    }
+
+                    // 箱线图数据
+                    if (data.boxplotValues) {
+                        boxplotData.push({
+                            name: category,
+                            type: 'boxplot',
+                            data: [
+                                [
+                                    data.boxplotValues.min,
+                                    data.boxplotValues['25%'],
+                                    data.boxplotValues['50%'],
+                                    data.boxplotValues['75%'],
+                                    data.boxplotValues.max
+                                ]
+                            ]
+                        });
+                    }
+                });
+
+                histogram.setOption({
+                    tooltip: { trigger: 'axis' },
+                    legend: { data: histogramData.counts.map(d => d.name) },
+                    xAxis: { type: 'category', data: histogramData.categories },
+                    yAxis: { type: 'value' },
+                    series: histogramData.counts
+                });
+
+                boxplot.setOption({
+                    tooltip: { trigger: 'item' },
+                    legend: { data: categories },
+                    xAxis: { type: 'category', data: categories },
+                    yAxis: { type: 'value' },
+                    series: boxplotData
+                });
+
+            } else {
+                const histogramDiv = document.createElement('div');
+                histogramDiv.className = 'chart';
+                histogramDiv.id = 'histogramChart';
+                chartContainer.appendChild(histogramDiv);
+
+                const pieChartDivs = categories.map(category => {
+                    const div = document.createElement('div');
+                    div.className = 'chart';
+                    div.id = `${category}PieChart`;
+                    chartContainer.appendChild(div);
+                    return div;
+                });
+
+                const histogram = echarts.init(histogramDiv);
+                const pieCharts = pieChartDivs.map(div => echarts.init(div));
+
+                let histogramData = { categories: [], counts: [] };
+                let pieData = categories.map(() => []);
+                let totalCounts = {};
+
+                categories.forEach((category, index) => {
+                    const data = currentData[category].frequencyDistribution[param];
+
+                    // 计算总数据量
+                    totalCounts[category] = Object.values(data.valueCounts).reduce((a, b) => a + b, 0);
+
+                    // 直方图数据
+                    if (data.histogramValues) {
+                        histogramData.categories = data.histogramValues.categories;
+                        histogramData.counts.push({ name: `${category} (总数: ${totalCounts[category]})`, type: 'bar', data: data.histogramValues.counts });
+                    }
+
+                    // 扇形图数据
+                    if (data.valueCounts) {
+                        Object.keys(data.valueCounts).forEach(key => {
+                            pieData[index].push({ value: data.valueCounts[key], name: key });
+                        });
+                    }
+                });
+
+                histogram.setOption({
+                    tooltip: { trigger: 'axis' },
+                    legend: { data: histogramData.counts.map(d => d.name) },
+                    xAxis: { type: 'category', data: histogramData.categories },
+                    yAxis: { type: 'value' },
+                    series: histogramData.counts
+                });
+
+                pieCharts.forEach((pieChart, index) => {
+                    pieChart.setOption({
+                        tooltip: { trigger: 'item' },
+                        title: {
+                            text: categories[index],
+                            left: 'center'
+                        },
+                        series: [{
+                            type: 'pie',
+                            radius: '50%',
+                            data: pieData[index],
+                            emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
+                        }]
+                    });
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadComparisonData);
+    </script>
+</body>
+</html>

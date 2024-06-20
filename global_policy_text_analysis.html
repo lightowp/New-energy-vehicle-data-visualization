@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>World Map with Word Clouds</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.3.3/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.0.0/dist/echarts-wordcloud.min.js"></script>
+    <script src="https://assets.pyecharts.org/assets/v5/maps/world.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.7.0/nouislider.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.7.0/nouislider.min.js"></script>
+</head>
+<body>
+    <div id="main" style="width: 100%; height: 600px;"></div>
+    <div id="wordcloud" style="width: 100%; height: 400px; margin-top: 20px;"></div>
+
+    <div style="margin-top: 20px;">
+        <label for="year-range">Select Year Range: </label>
+        <div id="year-range" style="margin: 20px 0;"></div>
+    </div>
+
+    <script>
+        // Initialize the charts
+        var myChart = echarts.init(document.getElementById('main'));
+        var wordcloudChart = echarts.init(document.getElementById('wordcloud'));
+        var selectedCountry = null;
+
+        // Load the wordcloud data
+        var wordcloudData;
+        fetch('cleaned_wordcloud_data.json')
+            .then(response => response.json())
+            .then(data => {
+                wordcloudData = data;
+                initMap();
+                populateYearOptions();
+            });
+
+        // Function to initialize the map
+        function initMap() {
+            var option = {
+                title: {
+                    text: 'World Map with Policy Measures Word Clouds',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function (params) {
+                        return params.name + ': ' + (params.value || 0) + ' policies';
+                    }
+                },
+                visualMap: {
+                    min: 0,
+                    max: 100,
+                    left: 'left',
+                    top: 'bottom',
+                    text: ['High', 'Low'],
+                    calculable: true
+                },
+                toolbox: {
+                    show: true,
+                    orient: 'vertical',
+                    left: 'right',
+                    top: 'center',
+                    feature: {
+                        saveAsImage: { show: true }
+                    }
+                },
+                series: [
+                    {
+                        name: 'Policies',
+                        type: 'map',
+                        map: 'world',
+                        roam: true,
+                        emphasis: {
+                            label: {
+                                show: true
+                            }
+                        },
+                        data: []
+                    }
+                ]
+            };
+            myChart.setOption(option);
+
+            // Add event listener for map click
+            myChart.on('click', function (params) {
+                selectedCountry = params.name;
+                var yearRange = document.getElementById('year-range').noUiSlider.get();
+                showWordCloud(yearRange, selectedCountry);
+            });
+        }
+
+        // Function to get the policy count data based on the selected year range
+        function getPoliciesCount(yearRange) {
+            var startYear = parseFloat(yearRange[0]);
+            var endYear = parseFloat(yearRange[1]);
+            var policiesCount = {};
+
+            for (var year in wordcloudData) {
+                var numericYear = parseFloat(year);
+                if (numericYear >= startYear && numericYear <= endYear) {
+                    for (var country in wordcloudData[year]) {
+                        if (!policiesCount[country]) {
+                            policiesCount[country] = 0;
+                        }
+                        for (var word in wordcloudData[year][country]) {
+                            policiesCount[country] += wordcloudData[year][country][word];
+                        }
+                    }
+                }
+            }
+
+            var policiesCountArray = [];
+            for (var country in policiesCount) {
+                policiesCountArray.push({ name: country, value: policiesCount[country] });
+            }
+            return policiesCountArray;
+        }
+
+        // Function to show the word cloud
+        function showWordCloud(yearRange, country) {
+            var startYear = parseFloat(yearRange[0]);
+            var endYear = parseFloat(yearRange[1]);
+            var combinedData = {};
+
+            for (var year in wordcloudData) {
+                var numericYear = parseFloat(year);
+                if (numericYear >= startYear && numericYear <= endYear) {
+                    if (wordcloudData[year][country]) {
+                        var words = wordcloudData[year][country];
+                        for (var word in words) {
+                            if (combinedData[word]) {
+                                combinedData[word] += words[word];
+                            } else {
+                                combinedData[word] = words[word];
+                            }
+                        }
+                    }
+                }
+            }
+
+            var wordCloudData = [];
+            for (var word in combinedData) {
+                wordCloudData.push({ name: word, value: combinedData[word] });
+            }
+
+            var option = {
+                title: {
+                    text: 'Word Cloud for ' + country + ' from ' + startYear + ' to ' + endYear,
+                    left: 'center'
+                },
+                tooltip: {
+                    show: true
+                },
+                series: [{
+                    type: 'wordCloud',
+                    gridSize: 2,
+                    sizeRange: [12, 50],
+                    rotationRange: [-90, 90],
+                    shape: 'pentagon',
+                    width: '100%',
+                    height: '100%',
+                    drawOutOfBound: false,
+                    textStyle: {
+                        normal: {
+                            color: function () {
+                                return 'rgb(' + [
+                                    Math.round(Math.random() * 160),
+                                    Math.round(Math.random() * 160),
+                                    Math.round(Math.random() * 160)
+                                ].join(',') + ')';
+                            }
+                        }
+                    },
+                    data: wordCloudData
+                }]
+            };
+            wordcloudChart.setOption(option);
+        }
+
+        // Function to populate year options dynamically
+        function populateYearOptions() {
+            var years = Object.keys(wordcloudData).map(parseFloat).sort((a, b) => a - b);
+
+            var yearRange = document.getElementById('year-range');
+            noUiSlider.create(yearRange, {
+                start: [years[0], years[years.length - 1]],
+                connect: true,
+                range: {
+                    'min': years[0],
+                    'max': years[years.length - 1]
+                },
+                step: 1,
+                tooltips: [true, true],
+                format: {
+                    to: function (value) {
+                        return Math.round(value);
+                    },
+                    from: function (value) {
+                        return Number(value);
+                    }
+                },
+                // 添加样式配置
+                pips: {
+                    mode: 'steps',
+                    density: 5,
+                    stepped: true,
+                    format: {
+                        to: function (value) {
+                            return Math.round(value);
+                        },
+                        from: function (value) {
+                            return Number(value);
+                        }
+                    }
+                },
+                // 设置颜色
+                colours: {
+                    backgroundColor: '#008CBA',
+                    rangeFill: '#008CBA'
+                }
+            });
+
+            yearRange.noUiSlider.on('change', function (values) {
+                var policiesCount = getPoliciesCount(values);
+                myChart.setOption({
+                    series: [{
+                        data: policiesCount
+                    }]
+                });
+
+                if (selectedCountry) {
+                    showWordCloud(values, selectedCountry);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

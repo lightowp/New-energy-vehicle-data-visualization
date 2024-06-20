@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全球电动汽车库存和销售</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <script src="https://assets.pyecharts.org/assets/v5/maps/world.js"></script>
+    <style>
+        #main {
+            width: 100%;
+            height: 600px;
+        }
+        #charts {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .chart {
+            width: 80%;
+            height: 400px;
+        }
+        #toggleButton, #modeSelect {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            padding: 10px 20px;
+            background-color: white;
+            border: 1px solid #ccc;
+            cursor: pointer;
+        }
+        #modeSelect {
+            top: 50px;
+            right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="main"></div>
+    <div id="charts">
+        <div id="timeChart" class="chart"></div>
+    </div>
+    <button id="toggleButton">切换至库存份额</button>
+    <select id="modeSelect">
+        <option value="Cars">Cars</option>
+        <option value="Buses">Buses</option>
+        <option value="Vans">Vans</option>
+        <option value="Trucks">Trucks</option>
+    </select>
+    <script type="text/javascript">
+        var chartDom = document.getElementById('main');
+        var myChart = echarts.init(chartDom);
+        var timeChart = echarts.init(document.getElementById('timeChart'));
+        var toggleButton = document.getElementById('toggleButton');
+        var modeSelect = document.getElementById('modeSelect');
+
+        var showingStock = false; // 初始显示销售份额
+        var currentMode = 'Cars'; // 初始显示车辆类型为Cars
+        var interval = null; // 控制折线图的时间轴
+        var currentRegion = null; // 当前选中的地区
+
+        fetch('global_ev_stock_sales.json')
+            .then(response => response.json())
+            .then(data => {
+                var regions = [...new Set(data.map(item => item.region))];
+                var years = [...new Set(data.map(item => item.year))].sort((a, b) => a - b);
+
+                function getFilteredData(parameter, mode) {
+                    return data.filter(item => item.parameter === parameter && item.mode === mode);
+                }
+
+                function prepareMapData(stockShare, salesShare) {
+                    var mapData = [];
+                    years.forEach(year => {
+                        var yearData = {
+                            time: year,
+                            data: regions.map(region => {
+                                var stock = stockShare.find(item => item.year == year && item.region == region);
+                                var sales = salesShare.find(item => item.year == year && item.region == region);
+                                return {
+                                    name: region,
+                                    value: stock ? stock.value : 0,
+                                    salesValue: sales ? sales.value : 0
+                                };
+                            })
+                        };
+                        mapData.push(yearData);
+                    });
+                    return mapData;
+                }
+
+                function updateMap() {
+                    var stockShare = getFilteredData('EV stock share', currentMode);
+                    var salesShare = getFilteredData('EV sales share', currentMode);
+                    var mapData = prepareMapData(stockShare, salesShare);
+
+                    var timelineData = mapData.map(item => item.time);
+                    var maxStock = Math.max(...mapData.map(item => Math.max(...item.data.map(d => d.value))));
+                    var maxSales = Math.max(...mapData.map(item => Math.max(...item.data.map(d => d.salesValue))));
+
+                    var option = {
+                        baseOption: {
+                            timeline: {
+                                axisType: 'category',
+                                data: timelineData,
+                                autoPlay: true,
+                                playInterval: 1000,
+                                loop: false,
+                                currentIndex: 0 // 从初始年份开始
+                            },
+                            tooltip: {
+                                trigger: 'item',
+                                formatter: function(params) {
+                                    var value = showingStock ? params.data.value : params.data.salesValue;
+                                    return `${params.name}<br/>${showingStock ? '库存份额' : '销售份额'}: ${value}%`;
+                                }
+                            },
+                            visualMap: {
+                                min: 0,
+                                max: showingStock ? maxStock : maxSales,
+                                left: 'left',
+                                top: 'bottom',
+                                text: ['高', '低'],
+                                calculable: true
+                            },
+                            series: [
+                                {
+                                    name: showingStock ? `EV 库存份额 (${currentMode})` : `EV 销售份额 (${currentMode})`,
+                                    type: 'map',
+                                    map: 'world',
+                                    roam: true,
+                                    emphasis: {
+                                        label: {
+                                            show: true
+                                        }
+                                    },
+                                    data: mapData[0].data // 初始使用第一个年份的数据
+                                }
+                            ]
+                        },
+                        options: mapData.map(item => ({
+                            series: [{
+                                data: item.data.map(d => ({
+                                    name: d.name,
+                                    value: showingStock ? d.value : d.salesValue
+                                }))
+                            }]
+                        }))
+                    };
+
+                    myChart.setOption(option);
+                }
+
+                function updateTimeChart(region) {
+                    var stockShare = getFilteredData('EV stock share', currentMode);
+                    var salesShare = getFilteredData('EV sales share', currentMode);
+
+                    var regionData = years.map(year => {
+                        var stock = stockShare.find(item => item.year == year && item.region == region);
+                        var sales = salesShare.find(item => item.year == year && item.region == region);
+                        return {
+                            year: year,
+                            stock: stock ? stock.value : 0,
+                            sales: sales ? sales.value : 0
+                        };
+                    });
+
+                    var timeOption = {
+                        title: { text: `${region} 电动汽车份额变化 (${currentMode})` },
+                        tooltip: { trigger: 'axis' },
+                        legend: { data: ['EV 库存份额', 'EV 销售份额'] },
+                        xAxis: { type: 'category', data: years },
+                        yAxis: { type: 'value' },
+                        series: [
+                            { name: 'EV 库存份额', type: 'line', data: regionData.map(d => d.stock) },
+                            { name: 'EV 销售份额', type: 'line', data: regionData.map(d => d.sales) }
+                        ]
+                    };
+
+                    timeChart.setOption(timeOption);
+                }
+
+                function initGlobalTimeChart() {
+                    var stockShare = getFilteredData('EV stock share', currentMode);
+                    var salesShare = getFilteredData('EV sales share', currentMode);
+
+                    var globalData = years.map(year => {
+                        var totalStock = 0;
+                        var totalSales = 0;
+
+                        regions.forEach(region => {
+                            var stock = stockShare.find(item => item.year == year && item.region == region);
+                            var sales = salesShare.find(item => item.year == year && item.region == region);
+                            totalStock += stock ? stock.value : 0;
+                            totalSales += sales ? sales.value : 0;
+                        });
+
+                        return {
+                            year: year,
+                            stock: totalStock,
+                            sales: totalSales
+                        };
+                    });
+
+                    var timeOption = {
+                        title: { text: `全球电动汽车份额变化 (${currentMode})` },
+                        tooltip: { trigger: 'axis' },
+                        legend: { data: ['EV 库存份额', 'EV 销售份额'] },
+                        xAxis: { type: 'category', data: regions },
+                        yAxis: { type: 'value' },
+                        series: [
+                            { name: 'EV 库存份额', type: 'line', data: globalData.map(d => d.stock) },
+                            { name: 'EV 销售份额', type: 'line', data: globalData.map(d => d.sales) }
+                        ]
+                    };
+
+                    timeChart.setOption(timeOption);
+
+                    if (interval) {
+                        clearInterval(interval);
+                    }
+
+                    var currentIndex = 0;
+                    interval = setInterval(function() {
+                        if (currentIndex < years.length) {
+                            updateGlobalTimeChart(currentIndex);
+                            currentIndex++;
+                        } else {
+                            clearInterval(interval);
+                        }
+                    }, 1000);
+
+                    myChart.on('timelinechanged', function(params) {
+                        currentIndex = params.currentIndex;
+                        updateGlobalTimeChart(currentIndex);
+                    });
+
+                    function updateGlobalTimeChart(index) {
+                        var year = years[index];
+                        var yearData = globalData[index];
+                        timeChart.setOption({
+                            title: { text: `${year} 年 全球电动汽车份额变化 (${currentMode})` },
+                            xAxis: { data: regions },
+                            series: [
+                                { name: 'EV 库存份额', data: regions.map(region => {
+                                    var stock = stockShare.find(item => item.year == year && item.region == region);
+                                    return stock ? stock.value : 0;
+                                })},
+                                { name: 'EV 销售份额', data: regions.map(region => {
+                                    var sales = salesShare.find(item => item.year == year && item.region == region);
+                                    return sales ? sales.value : 0;
+                                })}
+                            ]
+                        });
+                    }
+                }
+
+                toggleButton.addEventListener('click', function() {
+                    showingStock = !showingStock;
+                    toggleButton.textContent = showingStock ? '切换至销售份额' : '切换至库存份额';
+                    updateMap();
+                });
+
+                modeSelect.addEventListener('change', function() {
+                    currentMode = modeSelect.value;
+                    updateMap();
+                    initGlobalTimeChart();
+                });
+
+                updateMap(); // 初始化地图
+                initGlobalTimeChart(); // 初始化全世界份额变化的折线图
+
+                myChart.off('click');
+                myChart.on('click', function(params) {
+                    var regionName = params.name;
+                    currentRegion = regionName;
+                    updateTimeChart(regionName);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching or parsing data:', error);
+            });
+    </script>
+</body>
+</html>

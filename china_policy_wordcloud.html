@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>China Policy Word Cloud</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.3.3/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.0.0/dist/echarts-wordcloud.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.7.0/nouislider.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.7.0/nouislider.min.js"></script>
+    <style>
+        #loading {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background-color: rgba(255, 255, 255, 0.8);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #year-range-container {
+            width: 100%;
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+        }
+        #year-range {
+            width: 80%;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div>Loading...</div>
+    </div>
+    <div id="wordcloud" style="width: 100%; height: 600px; margin-top: 20px;"></div>
+
+    <div id="year-range-container">
+        <label for="year-range">Select Year Range: </label>
+        <div id="year-range"></div>
+    </div>
+
+    <script>
+        // Initialize the word cloud chart
+        var wordcloudChart = echarts.init(document.getElementById('wordcloud'));
+
+        // Load the word cloud data
+        var wordcloudData;
+        fetch('cleaned_china_wordcloud_data.json')
+            .then(response => response.json())
+            .then(data => {
+                wordcloudData = data;
+                populateYearOptions();
+                document.getElementById('loading').style.display = 'none'; // Hide loading animation
+            });
+
+        // Function to get the word cloud data based on the selected year range
+        function getWordCloudData(yearRange) {
+            var startYear = parseFloat(yearRange[0]);
+            var endYear = parseFloat(yearRange[1]);
+            var combinedData = {};
+
+            for (var year in wordcloudData) {
+                var numericYear = parseFloat(year);
+                if (numericYear >= startYear && numericYear <= endYear) {
+                    var words = wordcloudData[year];
+                    for (var word in words) {
+                        if (combinedData[word]) {
+                            combinedData[word] += words[word];
+                        } else {
+                            combinedData[word] = words[word];
+                        }
+                    }
+                }
+            }
+
+            var wordCloudData = [];
+            for (var word in combinedData) {
+                wordCloudData.push({ name: word, value: combinedData[word] });
+            }
+
+            return wordCloudData;
+        }
+
+        // Function to show the word cloud
+        function showWordCloud(yearRange) {
+            var wordCloudData = getWordCloudData(yearRange);
+
+            var option = {
+                title: {
+                    text: 'China Policy Word Cloud from ' + yearRange[0] + ' to ' + yearRange[1],
+                    left: 'center'
+                },
+                tooltip: {
+                    show: true
+                },
+                series: [{
+                    type: 'wordCloud',
+                    gridSize: 2,
+                    sizeRange: [12, 1500],
+                    rotationRange: [-90, 90],
+                    shape: 'pentagon',
+                    width: '100%',
+                    height: '100%',
+                    drawOutOfBound: false,
+                    textStyle: {
+                        normal: {
+                            color: function () {
+                                return 'rgb(' + [
+                                    Math.round(Math.random() * 160),
+                                    Math.round(Math.random() * 160),
+                                    Math.round(Math.random() * 160)
+                                ].join(',') + ')';
+                            }
+                        }
+                    },
+                    data: wordCloudData
+                }]
+            };
+            wordcloudChart.setOption(option);
+        }
+
+        // Function to populate year options dynamically
+        function populateYearOptions() {
+            var years = Object.keys(wordcloudData).map(parseFloat).sort((a, b) => a - b);
+
+            var yearRange = document.getElementById('year-range');
+            noUiSlider.create(yearRange, {
+                start: [years[0], years[years.length - 1]],
+                connect: true,
+                range: {
+                    'min': years[0],
+                    'max': years[years.length - 1]
+                },
+                step: 1,
+                tooltips: [true, true],
+                format: {
+                    to: function (value) {
+                        return Math.round(value);
+                    },
+                    from: function (value) {
+                        return Number(value);
+                    }
+                }
+            });
+
+            yearRange.noUiSlider.on('change', function (values) {
+                showWordCloud(values);
+            });
+
+            // Initialize with the full range
+            showWordCloud(yearRange.noUiSlider.get());
+        }
+    </script>
+</body>
+</html>

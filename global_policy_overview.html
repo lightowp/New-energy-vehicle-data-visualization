@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>World Map with Policy Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <script src="https://assets.pyecharts.org/assets/v5/maps/world.js"></script>
+    <style>
+        #main {
+            width: 100%;
+            height: 600px;
+        }
+        #charts {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .chart {
+            width: 80%;
+            height: 400px;
+        }
+        .half-chart {
+            width: 50%;
+            height: 400px;
+        }
+        .full-chart {
+            width: 100%;
+            height: 400px;
+        }
+    </style>
+</head>
+<body>
+    <div id="main"></div>
+    <div id="charts">
+        <div id="timeChart" class="chart"></div>
+        <div style="display: flex; flex-wrap: wrap; width: 100%;">
+            <div id="categoryChart" class="half-chart"></div>
+            <div id="sourceChart" class="half-chart"></div>
+            <div id="levelChart" class="half-chart"></div>
+            <div id="policyTypeChart" class="half-chart"></div>
+        </div>
+    </div>
+    <script type="text/javascript">
+        var chartDom = document.getElementById('main');
+        var myChart = echarts.init(chartDom);
+        var charts = {
+            categoryChart: echarts.init(document.getElementById('categoryChart')),
+            sourceChart: echarts.init(document.getElementById('sourceChart')),
+            levelChart: echarts.init(document.getElementById('levelChart')),
+            policyTypeChart: echarts.init(document.getElementById('policyTypeChart')),
+            timeChart: echarts.init(document.getElementById('timeChart'))
+        };
+        var option;
+
+        fetch('policy_data.json')
+            .then(response => response.json())
+            .then(data => {
+                var mapData = [];
+                var countryData = data.policy_details;
+                var years = Object.keys(countryData).filter(key => !isNaN(key)).sort((a, b) => a - b);
+
+                // Aggregate data for all years
+                var totalData = {};
+                years.forEach(year => {
+                    for (var country in countryData[year]) {
+                        if (!totalData[country]) {
+                            totalData[country] = 0;
+                        }
+                        totalData[country] += Object.values(countryData[year][country].Category).reduce((a, b) => a + b, 0);
+                    }
+                });
+
+                years.forEach(year => {
+                    var yearlyData = [];
+                    for (var country in countryData[year]) {
+                        yearlyData.push({ name: country, value: Object.values(countryData[year][country].Category).reduce((a, b) => a + b, 0) });
+                    }
+                    mapData.push({
+                        time: year,
+                        data: yearlyData
+                    });
+                });
+
+                mapData.push({
+                    time: 'Total',
+                    data: Object.keys(totalData).map(country => ({ name: country, value: totalData[country] }))
+                });
+
+                var timelineData = mapData.map(item => item.time);
+                option = {
+                    baseOption: {
+                        timeline: {
+                            axisType: 'category',
+                            data: timelineData,
+                            autoPlay: true,
+                            playInterval: 1000,
+                            loop: false
+                        },
+                        tooltip: {
+                            trigger: 'item'
+                        },
+                        visualMap: {
+                            min: 0,
+                            max: Math.max(...mapData.map(item => Math.max(...item.data.map(d => d.value)))),
+                            left: 'left',
+                            top: 'bottom',
+                            text: ['High','Low'],
+                            calculable: true
+                        },
+                        series: [
+                            {
+                                name: 'Policy Count',
+                                type: 'map',
+                                map: 'world',
+                                roam: true,
+                                emphasis: {
+                                    label: {
+                                        show: true
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    options: mapData.map(item => ({
+                        series: [{
+                            data: item.data
+                        }]
+                    }))
+                };
+
+                myChart.setOption(option);
+
+                myChart.on('click', function(params) {
+                    updateCharts(params.name, timelineData[myChart.getOption().timeline[0].currentIndex]);
+                });
+
+                myChart.on('timelinechanged', function() {
+                    var currentIndex = myChart.getOption().timeline[0].currentIndex;
+                    updateCharts(null, timelineData[currentIndex]);
+                });
+
+                function updateCharts(country, year) {
+                    if (!country) return;
+
+                    var countryPolicies = {};
+                    if (year === 'Total') {
+                        // Aggregate data for the total period
+                        years.forEach(y => {
+                            if (countryData[y][country]) {
+                                for (var key in countryData[y][country]) {
+                                    if (!countryPolicies[key]) {
+                                        countryPolicies[key] = {};
+                                    }
+                                    for (var subKey in countryData[y][country][key]) {
+                                        var newKey = `${y}-${subKey}`;
+                                        countryPolicies[key][newKey] = (countryPolicies[key][newKey] || 0) + countryData[y][country][key][subKey];
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        countryPolicies = countryData[year][country];
+                    }
+
+                    if (!countryPolicies) {
+                        console.error(`Data for ${country} in ${year} not found`);
+                        return;
+                    }
+
+                    // Update Time Chart
+                    var timeChartOption = {
+                        title: {
+                            text: `Policy Counts Over Time in ${country}`
+                        },
+                        xAxis: {
+                            type: 'category',
+                            data: years
+                        },
+                        yAxis: {
+                            type: 'value'
+                        },
+                        series: [{
+                            data: years.map(y => {
+                                if (countryData[y] && countryData[y][country]) {
+                                    return Object.values(countryData[y][country].Category).reduce((a, b) => a + b, 0);
+                                }
+                                return 0;
+                            }),
+                            type: 'line'
+                        }],
+                        dataZoom: [
+                            {
+                                type: 'slider',
+                                start: 0,
+                                end: 100
+                            },
+                            {
+                                type: 'inside',
+                                start: 0,
+                                end: 100
+                            }
+                        ]
+                    };
+                    charts.timeChart.setOption(timeChartOption);
+
+                    var aggregateData = {
+                        Category: {},
+                        Source: {},
+                        Level: {},
+                        Policy_type: {}
+                    };
+
+                    Object.keys(countryPolicies).forEach(type => {
+                        var dataObj = countryPolicies[type];
+                        for (var key in dataObj) {
+                            aggregateData[type][key] = (aggregateData[type][key] || 0) + dataObj[key];
+                        }
+                    });
+
+                    var categoryData = Object.entries(aggregateData.Category).map(([name, value]) => ({ value, name }));
+                    var sourceData = Object.entries(aggregateData.Source).map(([name, value]) => ({ value, name }));
+                    var levelData = Object.entries(aggregateData.Level).map(([name, value]) => ({ value, name }));
+                    var policyTypeData = Object.entries(aggregateData.Policy_type).map(([name, value]) => ({ value, name }));
+
+                    var pieOptions = {
+                        title: {
+                            text: `Categories in ${country} (${year})`,
+                            left: 'center'
+                        },
+                        tooltip: {
+                            trigger: 'item'
+                        },
+                        legend: {
+                            type: 'scroll',
+                            orient: 'vertical',
+                            left: 'left'
+                        },
+                        series: [
+                            {
+                                name: 'Category',
+                                type: 'pie',
+                                radius: '50%',
+                                data: categoryData
+                            }
+                        ]
+                    };
+
+                    charts.categoryChart.setOption(pieOptions);
+
+                    pieOptions.series[0].data = sourceData;
+                    pieOptions.series[0].name = 'Source';
+                    pieOptions.title.text = `Sources in ${country} (${year})`;
+                    charts.sourceChart.setOption(pieOptions);
+
+                    pieOptions.series[0].data = levelData;
+                    pieOptions.series[0].name = 'Level';
+                    pieOptions.title.text = `Levels in ${country} (${year})`;
+                    charts.levelChart.setOption(pieOptions);
+
+                    pieOptions.series[0].data = policyTypeData;
+                    pieOptions.series[0].name = 'Policy Type';
+                    pieOptions.title.text = `Policy Types in ${country} (${year})`;
+                    charts.policyTypeChart.setOption(pieOptions);
+                }
+            })
+            .catch(error => console.error('Error loading JSON data:', error));
+
+        option && myChart.setOption(option);
+    </script>
+</body>
+</html>

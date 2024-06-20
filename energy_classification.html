@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>能源分类</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.0.2/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body { padding: 0; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        #energyPieChart { width: 600px; height: 600px; }
+    </style>
+</head>
+<body>
+    <h2>能源分类</h2>
+    <div id="energyPieChart"></div>
+
+    <script>
+        function loadEnergyDistribution() {
+            axios.get('energy_distribution.json')
+                .then(response => {
+                    const data = response.data;
+                    const pieChart = echarts.init(document.getElementById('energyPieChart'));
+                    pieChart.setOption({
+                        title: { text: '能源分类', left: 'center' },
+                        tooltip: { trigger: 'item' },
+                        legend: { orient: 'vertical', left: 'left', type: 'scroll' },
+                        series: [{
+                            name: '能源类型',
+                            type: 'pie',
+                            radius: '50%',
+                            center: ['50%', '50%'], // 居中设置
+                            data: Object.keys(data).map(key => ({ value: data[key], name: key })),
+                            emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
+                        }]
+                    });
+
+                    // 监听窗口大小变化，重新调整图表大小和位置
+                    window.addEventListener('resize', function() {
+                        pieChart.resize();
+                    });
+                })
+                .catch(error => {
+                    console.error("Error loading energy distribution data: ", error);
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', loadEnergyDistribution);
+    </script>
+</body>
+</html>
